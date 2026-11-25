@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user settings storing the signed-in user's active family sync code.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Firebase Auth UID of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "User display name."
+        },
+        "activeFamilyCode": {
+          "type": "string",
+          "maxLength": 24,
+          "pattern": "^[A-Z0-9_-]{4,24}$",
+          "description": "Currently linked shared family sync code."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last update."
+        }
+      },
+      "required": ["uid", "updatedAt"]
+    },
+    "FamilyWorkspace": {
+      "title": "FamilyWorkspace",
+      "description": "Shared real-time CleanPesach household workspace synchronized across family devices.",
+      "type": "object",
+      "properties": {
+        "familyCode": {
+          "type": "string",
+          "maxLength": 24,
+          "pattern": "^[A-Z0-9_-]{4,24}$",
+          "description": "Shared family workspace identifier."
+        },
+        "ownerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID of the family creator."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list of authenticated family member UIDs allowed to sync this workspace."
+        },
+        "updatedByUid": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID of the user who performed the latest sync update."
+        },
+        "rooms": {
+          "type": "array",
+          "description": "List of rooms and chametz-free lock statuses."
+        },
+        "tasks": {
+          "type": "array",
+          "description": "List of cleaning tasks, assignments, and completion states."
+        },
+        "familyMembers": {
+          "type": "array",
+          "description": "List of household members participating in Pesach prep."
+        },
+        "finalPrepItems": {
+          "type": "array",
+          "description": "Checklist items for bedikat chametz and final preparations."
+        },
+        "sederSimanimChecked": {
+          "type": "array",
+          "description": "IDs of Seder night simanim checked off during the Seder."
+        },
+        "targetDate": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Target Seder date in YYYY-MM-DD format."
+        },
+        "cleaningLevel": {
+          "type": "string",
+          "enum": ["חמץ בלבד", "מאוזן", "יסודי"],
+          "description": "Selected household cleaning intensity."
+        },
+        "holidayPlanning": {
+          "type": "object",
+          "description": "Structured holiday planning data including guests, menu, koshering, shopping, outfits, gifts, and trips."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "familyCode",
+        "ownerUid",
+        "memberUids",
+        "updatedByUid",
+        "rooms",
+        "tasks",
+        "familyMembers",
+        "finalPrepItems",
+        "sederSimanimChecked",
+        "targetDate",
+        "cleaningLevel",
+        "holidayPlanning",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user sync metadata owned strictly by the authenticated user."
+    },
+    "/families/{familyCode}": {
+      "schema": { "$ref": "#/entities/FamilyWorkspace" },
+      "description": "Shared family CleanPesach state synchronized in real time across linked family members."
+    }
+  }
+}

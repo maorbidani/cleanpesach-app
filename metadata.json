@@ -1,0 +1,6 @@
+{
+  "name": "קליןפסח - CleanPesach",
+  "description": "אפליקציה חכמה, מרגיעה ומסודרת לניהול ניקיונות הבית והכשרת החדרים לקראת חג הפסח.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

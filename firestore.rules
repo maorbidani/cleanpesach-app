@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidFamilyCode(code) {
+      return code is string && code.size() >= 4 && code.size() <= 24 && code.matches('^[A-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'activeFamilyCode', 'updatedAt'])
+        && data.uid is string
+        && data.uid == request.auth.uid
+        && data.uid.size() <= 128
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100))
+        && (!('activeFamilyCode' in data) || (data.activeFamilyCode is string && (data.activeFamilyCode == '' || isValidFamilyCode(data.activeFamilyCode))))
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    function isValidHolidayPlanning(hp) {
+      return hp is map
+        && hp.keys().hasAll([
+          'guests',
+          'dishes',
+          'sederChecklist',
+          'hagalaUtensils',
+          'pesachWare',
+          'shoppingItems',
+          'outfitsByMember',
+          'gifts',
+          'trips'
+        ])
+        && hp.keys().hasOnly([
+          'guests',
+          'dishes',
+          'sederChecklist',
+          'hagalaUtensils',
+          'pesachWare',
+          'shoppingItems',
+          'outfitsByMember',
+          'gifts',
+          'trips'
+        ])
+        && hp.guests is list && hp.guests.size() <= 80
+        && hp.dishes is list && hp.dishes.size() <= 80
+        && hp.sederChecklist is list && hp.sederChecklist.size() <= 60
+        && hp.hagalaUtensils is list && hp.hagalaUtensils.size() <= 80
+        && hp.pesachWare is list && hp.pesachWare.size() <= 80
+        && hp.shoppingItems is list && hp.shoppingItems.size() <= 150
+        && hp.outfitsByMember is map && hp.outfitsByMember.keys().size() <= 25
+        && hp.gifts is list && hp.gifts.size() <= 80
+        && hp.trips is list && hp.trips.size() <= 40;
+    }
+
+    function isValidFamilyWorkspace(data, familyCode) {
+      return data.keys().hasAll([
+          'familyCode',
+          'ownerUid',
+          'memberUids',
+          'updatedByUid',
+          'rooms',
+          'tasks',
+          'familyMembers',
+          'finalPrepItems',
+          'sederSimanimChecked',
+          'targetDate',
+          'cleaningLevel',
+          'holidayPlanning',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'familyCode',
+          'ownerUid',
+          'memberUids',
+          'updatedByUid',
+          'rooms',
+          'tasks',
+          'familyMembers',
+          'finalPrepItems',
+          'sederSimanimChecked',
+          'targetDate',
+          'cleaningLevel',
+          'holidayPlanning',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.familyCode is string
+        && data.familyCode == familyCode
+        && isValidFamilyCode(data.familyCode)
+        && data.ownerUid is string
+        && data.ownerUid.size() >= 1
+        && data.ownerUid.size() <= 128
+        && data.updatedByUid is string
+        && data.updatedByUid == request.auth.uid
+        && data.updatedByUid.size() <= 128
+        && data.memberUids is list
+        && data.memberUids.size() >= 1
+        && data.memberUids.size() <= 20
+        && data.memberUids[0] is string
+        && (request.auth.uid in data.memberUids)
+        && data.rooms is list && data.rooms.size() <= 30
+        && data.tasks is list && data.tasks.size() <= 200
+        && data.familyMembers is list && data.familyMembers.size() <= 20
+        && data.finalPrepItems is list && data.finalPrepItems.size() <= 30
+        && data.sederSimanimChecked is list && data.sederSimanimChecked.size() <= 20
+        && data.targetDate is string && data.targetDate.size() <= 20
+        && data.cleaningLevel is string && data.cleaningLevel in ['חמץ בלבד', 'מאוזן', 'יסודי']
+        && isValidHolidayPlanning(data.holidayPlanning)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    // Connection check document
+    match /test/connection {
+      allow get: if isSignedIn();
+      allow list, write: if false;
+    }
+
+    // Private per-user sync state
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming());
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'activeFamilyCode', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // Shared real-time family workspace (lookup by exact shared code only, never listable)
+    match /families/{familyCode} {
+      allow get: if isVerifiedUser() && isValidFamilyCode(familyCode);
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidFamilyCode(familyCode)
+        && isValidFamilyWorkspace(incoming(), familyCode)
+        && incoming().ownerUid == request.auth.uid
+        && incoming().memberUids.size() == 1
+        && incoming().memberUids[0] == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidFamilyCode(familyCode)
+        && isValidFamilyWorkspace(incoming(), familyCode)
+        && incoming().familyCode == existing().familyCode
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Action 1: Join family workspace with exact shared code
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'updatedByUid', 'updatedAt'])
+            && incoming().memberUids.hasAll(existing().memberUids)
+            && incoming().memberUids.size() <= existing().memberUids.size() + 1
+          )
+          ||
+          // Action 2: Sync household state by an existing member
+          (
+            (request.auth.uid in existing().memberUids)
+            && incoming().memberUids == existing().memberUids
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'rooms',
+              'tasks',
+              'familyMembers',
+              'finalPrepItems',
+              'sederSimanimChecked',
+              'targetDate',
+              'cleaningLevel',
+              'holidayPlanning',
+              'updatedByUid',
+              'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isVerifiedUser()
+        && isValidFamilyCode(familyCode)
+        && existing().ownerUid == request.auth.uid;
+    }
+  }
+}
